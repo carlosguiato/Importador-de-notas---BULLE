@@ -10,7 +10,7 @@ st.set_page_config(
 
 st.title("📄 Conversor de Notas de Entrada para o Domínio Web")
 st.write(
-    "Faça o upload do relatório de notas de entrada para gerar o arquivo CSV"
+    "Faça o upload do relatório de notas de entrada para gerar o arquivo TXT"
     " formatado corretamente."
 )
 
@@ -25,10 +25,8 @@ if uploaded_file is not None:
     df_raw = pd.read_excel(uploaded_file, header=None)
 
     # Varredura para extração das linhas de dados válidas
-    # Baseado na estrutura: Nota na coluna 0, Data na coluna 6, Fornecedor na coluna 17, Total na coluna 32
     data_rows = []
     for idx, row in df_raw.iterrows():
-      # Identifica linhas onde a coluna de Nota possui valor válido
       if idx >= 7 and row[0] is not None and pd.notna(row[0]):
         data_rows.append({
             "Nota": row[0],
@@ -62,7 +60,7 @@ if uploaded_file is not None:
             "Conta de **Crédito** padrão (Ex: Fornecedor):", value=""
         )
 
-      # --- ABA OPCIONAL: REGRAS PERSONALIZADAS (DE-PARA) ---
+      # --- REGRAS PERSONALIZADAS (DE-PARA) ---
       st.markdown("---")
       regras_personalizadas = []
       with st.expander(
@@ -120,14 +118,14 @@ if uploaded_file is not None:
       st.markdown("---")
 
       # Botão para processar
-      if st.button("🚀 Processar e Gerar CSV de Notas", type="primary"):
+      if st.button("🚀 Processar e Gerar TXT de Notas", type="primary"):
         if not conta_debito_padrao or not conta_credito_padrao:
           st.error(
               "Por favor, preencha as contas padrão de Débito e Crédito antes"
               " de continuar."
           )
         else:
-          # 2. Tratamento do Valor Total
+          # Tratamento do Valor Total
           df["VALOR_NUM"] = (
               pd.to_numeric(
                   df["Total"]
@@ -140,7 +138,7 @@ if uploaded_file is not None:
               .abs()
           )
 
-          # 3. Formatação do Histórico conforme solicitado: "NF (nota) - (fornecedor)"
+          # Formatação do Histórico: "NF (nota) - (fornecedor)"
           def limpar_texto(val):
             if pd.isna(val) or str(val).strip().lower() in [
                 "nan",
@@ -158,7 +156,7 @@ if uploaded_file is not None:
               + df["Fornecedor"].apply(limpar_texto)
           )
 
-          # 4. Aplicação das contas padrão e regras De-Para
+          # Aplicação das contas padrão e regras De-Para
           def define_debito(row):
             hist_lower = str(row["Historico"]).lower()
             conta = conta_debito_padrao
@@ -184,8 +182,7 @@ if uploaded_file is not None:
           df["Conta Debito"] = df.apply(define_debito, axis=1)
           df["Conta Credito"] = df.apply(define_credito, axis=1)
 
-          # 5. Montagem do layout final na ordem exata solicitada:
-          # Data;Conta Debito;Conta Credito;Valor;Historico
+          # Montagem do layout final
           df_final = pd.DataFrame({
               "Data": pd.to_datetime(df["Data"], dayfirst=True, errors="coerce")
               .dt.strftime("%d/%m/%Y"),
@@ -195,17 +192,17 @@ if uploaded_file is not None:
               "Historico": df["Historico"],
           }).dropna(subset=["Data"])
 
-          # 6. Geração do CSV em memória sem cabeçalho (header=False) com separador ';'
-          csv_buffer = io.StringIO()
+          # Geração do arquivo em memória (separador ';' e sem cabeçalho)
+          txt_buffer = io.StringIO()
           df_final.to_csv(
-              csv_buffer,
+              txt_buffer,
               sep=";",
               index=False,
               header=False,
               decimal=",",
               encoding="cp1252",
           )
-          csv_data = csv_buffer.getvalue()
+          txt_data = txt_buffer.getvalue()
 
           st.success(
               f"✨ Arquivo convertido com sucesso! ({len(df_final)} notas"
@@ -216,12 +213,12 @@ if uploaded_file is not None:
           with st.expander("👀 Visualizar prévia dos lançamentos gerados"):
             st.dataframe(df_final.head(15))
 
-          # Botão de Download
+          # Botão de Download alterado para formato .txt
           st.download_button(
-              label="📥 Baixar Arquivo CSV de Notas para o Domínio",
-              data=csv_data.encode("cp1252", errors="replace"),
-              file_name="notas_entrada_dominio.csv",
-              mime="text/csv",
+              label="📥 Baixar Arquivo TXT de Notas para o Domínio",
+              data=txt_data.encode("cp1252", errors="replace"),
+              file_name="notas_entrada_dominio.txt",
+              mime="text/plain",
           )
 
   except Exception as e:
