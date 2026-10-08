@@ -49,15 +49,15 @@ if uploaded_file is not None:
       st.markdown("---")
       st.subheader("⚙️ Configuração das Contas no Domínio")
 
-      # Configuração das contas para Notas de Entrada
+      # Configuração das contas com os novos rótulos solicitados
       col1, col2 = st.columns(2)
       with col1:
         conta_debito_padrao = st.text_input(
-            "Conta de **Débito** padrão (Ex: Despesa / Estoque):", value=""
+            "**Código da transitória**:", value=""
         )
       with col2:
         conta_credito_padrao = st.text_input(
-            "Conta de **Crédito** padrão (Ex: Fornecedor):", value=""
+            "**Código da conta de fornecedores**:", value=""
         )
 
       # --- REGRAS PERSONALIZADAS (DE-PARA) ---
@@ -121,8 +121,7 @@ if uploaded_file is not None:
       if st.button("🚀 Processar e Gerar TXT de Notas", type="primary"):
         if not conta_debito_padrao or not conta_credito_padrao:
           st.error(
-              "Por favor, preencha as contas padrão de Débito e Crédito antes"
-              " de continuar."
+              "Por favor, preencha os códigos padrão antes de continuar."
           )
         else:
           # Tratamento do Valor Total
@@ -213,7 +212,7 @@ if uploaded_file is not None:
           with st.expander("👀 Visualizar prévia dos lançamentos gerados"):
             st.dataframe(df_final.head(15))
 
-          # Botão de Download alterado para formato .txt
+          # Botão de Download para formato .txt
           st.download_button(
               label="📥 Baixar Arquivo TXT de Notas para o Domínio",
               data=txt_data.encode("cp1252", errors="replace"),
