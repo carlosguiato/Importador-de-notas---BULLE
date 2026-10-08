@@ -49,7 +49,7 @@ if uploaded_file is not None:
       st.markdown("---")
       st.subheader("⚙️ Configuração das Contas no Domínio")
 
-      # Configuração das contas com os novos rótulos solicitados
+      # Configuração das contas com os rótulos solicitados
       col1, col2 = st.columns(2)
       with col1:
         conta_debito_padrao = st.text_input(
@@ -124,18 +124,22 @@ if uploaded_file is not None:
               "Por favor, preencha os códigos padrão antes de continuar."
           )
         else:
-          # Tratamento do Valor Total
-          df["VALOR_NUM"] = (
-              pd.to_numeric(
-                  df["Total"]
-                  .astype(str)
-                  .str.replace(".", "", regex=False)
-                  .str.replace(",", ".", regex=False),
-                  errors="coerce",
-              )
-              .fillna(0)
-              .abs()
-          )
+          # Tratamento correto do Valor Total para garantir 2 casas decimais
+          def limpar_valor(val):
+            if pd.isna(val):
+              return 0.0
+            val_str = str(val).strip()
+            # Se já for float/int do python
+            if isinstance(val, (int, float)):
+              return float(val)
+            # Se vier como string formatada em pt-BR (ex: "3.500,00" ou "350,0")
+            val_str = val_str.replace(".", "").replace(",", ".")
+            try:
+              return float(val_str)
+            except:
+              return 0.0
+
+          df["VALOR_NUM"] = df["Total"].apply(limpar_valor).abs()
 
           # Formatação do Histórico: "NF (nota) - (fornecedor)"
           def limpar_texto(val):
@@ -191,17 +195,14 @@ if uploaded_file is not None:
               "Historico": df["Historico"],
           }).dropna(subset=["Data"])
 
-          # Geração do arquivo em memória (separador ';' e sem cabeçalho)
-          txt_buffer = io.StringIO()
-          df_final.to_csv(
-              txt_buffer,
-              sep=";",
-              index=False,
-              header=False,
-              decimal=",",
-              encoding="cp1252",
-          )
-          txt_data = txt_buffer.getvalue()
+          # Geração manual do texto para garantir separador ';' e vírgula com 2 casas decimais exatas
+          linhas_txt = []
+          for _, row in df_final.iterrows():
+            valor_formatado = f"{row['Valor']:.2f}".replace(".", ",")
+            linha = f"{row['Data']};{row['Conta Debito']};{row['Conta Credito']};{valor_formatado};{row['Historico']}"
+            linhas_txt.append(linha)
+
+          txt_data = "\n".join(linhas_txt)
 
           st.success(
               f"✨ Arquivo convertido com sucesso! ({len(df_final)} notas"
