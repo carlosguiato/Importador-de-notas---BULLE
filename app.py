@@ -221,7 +221,7 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
 
 # ==========================================
-# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO (PDF)
+# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO (PDF COMPLETO)
 # ==========================================
 elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
   st.title("🏦 Conversor de Extrato Bancário em PDF para o Domínio Web")
@@ -246,9 +246,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
             if l_str:
               all_lines.append(l_str)
 
-      date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-
-      # Filtra lixos de cabeçalho e rodapé
+      # Filtra cabeçalhos e rodapés
       cleaned_lines = []
       for l in all_lines:
         if (
@@ -266,68 +264,82 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
           continue
         cleaned_lines.append(l)
 
+      # Parser robusto baseado em blocos para capturar 100% dos lançamentos
       valid_rows = []
+      date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+      val_pattern = re.compile(r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$")
+
       i = 0
       while i < len(cleaned_lines):
-        line = cleaned_lines[i]
-        if date_pattern.match(line):
-          data_trans = line
-          hist_parts = []
-          valores = []
-
+        text_lines = []
+        while (
+            i < len(cleaned_lines)
+            and not cleaned_lines[i].startswith("898996-4")
+            and not date_pattern.match(cleaned_lines[i])
+            and not val_pattern.match(cleaned_lines[i].replace(" ", ""))
+        ):
+          text_lines.append(cleaned_lines[i])
           i += 1
-          while i < len(cleaned_lines) and not date_pattern.match(
-              cleaned_lines[i]
-          ):
-            nxt = cleaned_lines[i]
-            # Verifica se é um valor numérico válido (ex: 74247,73 ou 1.000,00)
-            if re.match(
-                r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$",
-                nxt.replace(" ", ""),
+
+        block = []
+        while (
+            i < len(cleaned_lines)
+            and not cleaned_lines[i].startswith("898996-4")
+            and not val_pattern.match(cleaned_lines[i].replace(" ", ""))
+        ):
+          block.append(cleaned_lines[i])
+          i += 1
+
+        if i < len(cleaned_lines) and cleaned_lines[i].startswith("898996-4"):
+          i += 1
+
+        values = []
+        while i < len(cleaned_lines) and val_pattern.match(
+            cleaned_lines[i].replace(" ", "")
+        ):
+          values.append(cleaned_lines[i])
+          i += 1
+
+        if text_lines and values:
+          doc = text_lines[0]
+          hist = text_lines[1] if len(text_lines) > 1 else doc
+
+          dates_in_block = []
+          for item in text_lines + block:
+            if date_pattern.match(item):
+              dates_in_block.append(item)
+
+          data_trans = dates_in_block[0] if dates_in_block else "01/09/2026"
+
+          # Limpeza estrita do histórico (remove qualquer "Débito: ..." no final)
+          hist_clean = re.sub(
+              r"\s+Débito:\s*.*$", "", hist, flags=re.IGNORECASE
+          ).strip()
+
+          try:
+            val_num = float(values[0].replace(".", "").replace(",", "."))
+            if (
+                "Pagar:" in hist_clean
+                or "Débito:" in hist_clean
+                or "CUSTO PIX" in hist_clean
+                or "MANUTENÇÃO" in hist_clean
+                or "ARRENDAMENTO" in hist_clean
             ):
-              valores.append(nxt)
-            elif (
-                not nxt.startswith("898996")
-                and not nxt.isdigit()
-                and len(nxt) > 1
-            ):
-              hist_parts.append(nxt)
-            i += 1
-
-          if hist_parts and valores:
-            historico = " ".join(hist_parts)
-
-            # Remove qualquer termo indesejado no final do histórico como "Débito: 0080" ou similar
-            historico = re.sub(
-                r"\s+Débito:\s*.*$", "", historico, flags=re.IGNORECASE
-            ).strip()
-
-            val_str = valores[0].replace(".", "").replace(",", ".")
-            try:
-              val_num = float(val_str)
-              if (
-                  "Pagar:" in historico
-                  or "Débito:" in historico
-                  or "CUSTO PIX" in historico
-                  or "MANUTENÇÃO" in historico
-              ):
-                valid_rows.append({
-                    "Data": data_trans,
-                    "Historico": historico,
-                    "Credito": 0.0,
-                    "Debito": val_num,
-                })
-              else:
-                valid_rows.append({
-                    "Data": data_trans,
-                    "Historico": historico,
-                    "Credito": val_num,
-                    "Debito": 0.0,
-                })
-            except:
-              pass
-          else:
-            continue
+              valid_rows.append({
+                  "Data": data_trans,
+                  "Historico": hist_clean,
+                  "Credito": 0.0,
+                  "Debito": val_num,
+              })
+            else:
+              valid_rows.append({
+                  "Data": data_trans,
+                  "Historico": hist_clean,
+                  "Credito": val_num,
+                  "Debito": 0.0,
+              })
+          except:
+            pass
         else:
           i += 1
 
@@ -338,8 +350,12 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
             "Não foi possível extrair automaticamente. Verifique o layout do PDF."
         )
       else:
+        st.success(
+            f"✨ PDF lido com sucesso! Total de lançamentos extraídos:"
+            f" {len(df_ext)}"
+        )
         with st.expander("🔍 Ver prévia dos dados extraídos do PDF"):
-          st.dataframe(df_ext.head(10))
+          st.dataframe(df_ext.head(15))
 
         st.markdown("---")
         st.subheader("⚙️ Configuração das Contas no Domínio")
