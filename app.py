@@ -1,5 +1,5 @@
-import re
 import io
+import re
 import numpy as np
 import pandas as pd
 from pypdf import PdfReader
@@ -241,33 +241,10 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
       for page in reader.pages:
         full_text += page.extract_text() + "\n"
 
-      # Extração inteligente das linhas do extrato em PDF
-      # Lógica: Identifica linhas que possuem data no formato DD/MM/YYYY
       lines = full_text.split("\n")
-      parsed_data = []
-
-      # Expressão regular para encontrar datas
       date_pattern = re.compile(r"\b\d{2}/\d{2}/\d{4}\b")
 
-      # Vamos agrupar o texto por blocos ou varrer procurando padrões de lançamento
-      # No formato do PDF do Fazenda Bulle, cada transação possui data, histórico e valores.
-      # Vamos usar uma heurística robusta baseada em linhas de texto extraídas.
-
-      # Como o extrato em PDF do seu banco tem uma estrutura específica, vamos processar as linhas válidas:
-      # Uma linha de lançamento costuma conter uma data e valores numéricos com vírgula.
-
-      # Uma abordagem limpa para este PDF específico:
-      # Vamos iterar pelas linhas procurando datas e montando os registros.
-      current_date = None
-      current_hist = None
-      current_cred = 0.0
-      current_deb = 0.0
-
-      # Alternativamente, podemos usar extração baseada em blocos de linhas consecutivas.
-      # Vamos estruturar um parser adaptado para o PDF enviado:
-      valid_rows = []
-
-      # Limpeza prévia de linhas de cabeçalho/rodapé indesejadas
+      # Limpeza de cabeçalhos e rodapés
       cleaned_lines = []
       for line in lines:
         line_str = line.strip()
@@ -281,18 +258,17 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
             or "Documento" in line_str
             or "Histórico" in line_str
             or "Total" in line_str
+            or re.match(r"^\d/\d$", line_str)
         ):
           continue
         cleaned_lines.append(line_str)
 
-      # Processamento das transações
+      valid_rows = []
       i = 0
       while i < len(cleaned_lines):
         line = cleaned_lines[i]
-        # Procura por uma data (ex: 01/09/2026)
         if date_pattern.match(line):
           data_trans = line
-          # As próximas linhas geralmente contêm o histórico e os valores de crédito/débito
           hist_parts = []
           valores = []
 
@@ -301,27 +277,31 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
               cleaned_lines[i]
           ):
             nxt = cleaned_lines[i]
-            # Verifica se a linha é um valor numérico (contém vírgula e dígitos)
-            if re.match(r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$", nxt.replace(" ", "")):
+            if re.match(
+                r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$",
+                nxt.replace(" ", ""),
+            ):
               valores.append(nxt)
             elif (
                 not nxt.startswith("898996")
                 and not nxt.isdigit()
                 and len(nxt) > 2
+                and "CDSFIVE" not in nxt
             ):
               hist_parts.append(nxt)
             i += 1
 
           if hist_parts and valores:
             historico = " ".join(hist_parts)
-            # O último valor ou o único valor geralmente define se é crédito ou débito conforme o layout
-            # No extrato fornecido, os valores aparecem nas colunas de Crédito ou Débito.
-            # Vamos tratar o valor numérico encontrado:
+
+            # Limpeza de lixo indesejado no final do histórico (ex: "Débito: 000")
+            historico = re.sub(
+                r"\s+Débito:\s*\d*$", "", historico, flags=re.IGNORECASE
+            ).strip()
+
             val_str = valores[0].replace(".", "").replace(",", ".")
             try:
               val_num = float(val_str)
-              # Determinamos se foi crédito ou débito com base na posição ou sinal/texto
-              # Na dúvida, se contém "Pagar:" ou "Débito", é saída (Débito no banco)
               if (
                   "Pagar:" in historico
                   or "Débito:" in historico
@@ -352,8 +332,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
 
       if df_ext.empty:
         st.warning(
-            "Não foi possível extrair automaticamente pelo padrão estrito."
-            " Verifique o formato do PDF."
+            "Não foi possível extrair automaticamente. Verifique o layout do PDF."
         )
       else:
         with st.expander("🔍 Ver prévia dos dados extraídos do PDF"):
@@ -438,9 +417,6 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
               cred = row["Credito"]
               deb = row["Debito"]
 
-              # Lógica de Débito e Crédito conforme solicitado:
-              # Crédito no banco = Entrada -> Conta Crédito = Banco, Conta Débito = Clientes
-              # Débito no banco = Saída -> Conta Débito = Banco, Conta Crédito = Fornecedores
               if cred > 0 and deb == 0:
                 valor = cred
                 conta_cred = conta_banco
@@ -457,7 +433,6 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
               hist_final = str(row["Historico"]).strip()
               hist_lower = hist_final.lower()
 
-              # Regras De-Para
               for r in regras_ext:
                 if r["termo"] in hist_lower:
                   if tipo_movimento == "saida":
