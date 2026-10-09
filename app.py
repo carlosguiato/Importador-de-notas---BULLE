@@ -237,31 +237,34 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
   if uploaded_file_ext is not None:
     try:
       reader = PdfReader(uploaded_file_ext)
-      full_text = ""
+      all_lines = []
       for page in reader.pages:
-        full_text += page.extract_text() + "\n"
+        text = page.extract_text()
+        if text:
+          for line in text.split("\n"):
+            l_str = line.strip()
+            if l_str:
+              all_lines.append(l_str)
 
-      lines = full_text.split("\n")
-      date_pattern = re.compile(r"\b\d{2}/\d{2}/\d{4}\b")
+      date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 
-      # Limpeza de cabeçalhos e rodapés
+      # Filtra lixos de cabeçalho e rodapé
       cleaned_lines = []
-      for line in lines:
-        line_str = line.strip()
+      for l in all_lines:
         if (
-            not line_str
-            or "Lançamentos bancários" in line_str
-            or "Página" in line_str
-            or "FAZENDA BULLE" in line_str
-            or "sexta-feira" in line_str
-            or "Conta" in line_str
-            or "Documento" in line_str
-            or "Histórico" in line_str
-            or "Total" in line_str
-            or re.match(r"^\d/\d$", line_str)
+            "Lançamentos bancários" in l
+            or "Página" in l
+            or "FAZENDA BULLE" in l
+            or "sexta-feira" in l
+            or "Conta" in l
+            or "Documento" in l
+            or "Histórico" in l
+            or "Total" in l
+            or "CDSFIVE" in l
+            or re.match(r"^\d/\d$", l)
         ):
           continue
-        cleaned_lines.append(line_str)
+        cleaned_lines.append(l)
 
       valid_rows = []
       i = 0
@@ -277,6 +280,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
               cleaned_lines[i]
           ):
             nxt = cleaned_lines[i]
+            # Verifica se é um valor numérico válido (ex: 74247,73 ou 1.000,00)
             if re.match(
                 r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$",
                 nxt.replace(" ", ""),
@@ -285,8 +289,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
             elif (
                 not nxt.startswith("898996")
                 and not nxt.isdigit()
-                and len(nxt) > 2
-                and "CDSFIVE" not in nxt
+                and len(nxt) > 1
             ):
               hist_parts.append(nxt)
             i += 1
@@ -294,9 +297,9 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
           if hist_parts and valores:
             historico = " ".join(hist_parts)
 
-            # Limpeza de lixo indesejado no final do histórico (ex: "Débito: 000")
+            # Remove qualquer termo indesejado no final do histórico como "Débito: 0080" ou similar
             historico = re.sub(
-                r"\s+Débito:\s*\d*$", "", historico, flags=re.IGNORECASE
+                r"\s+Débito:\s*.*$", "", historico, flags=re.IGNORECASE
             ).strip()
 
             val_str = valores[0].replace(".", "").replace(",", ".")
