@@ -224,7 +224,7 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
 
 # ==========================================
-# FERRAMENTA 2: CONVERSOR DE NOTAS DE SAÍDA (PDF)
+# FERRAMENTA 2: CONVERSOR DE NOTAS DE SAÍDA (PDF) - CORRIGIDO
 # ==========================================
 elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
   st.title("📤 Conversor de Notas de Saída para o Domínio Web")
@@ -272,7 +272,8 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
           data = ""
           cliente = "CLIENTE"
 
-        vals = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}\b", header_line)
+        # Captura precisa de todos os valores monetários na linha do cabeçalho da NF (incluindo 5+ dígitos)
+        vals = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}\b", header_line)
         total_str = vals[-1] if vals else "0,00"
 
         produtos_texto = " ".join(block).upper()
