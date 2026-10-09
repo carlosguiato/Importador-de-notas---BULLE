@@ -224,7 +224,7 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
 
 # ==========================================
-# FERRAMENTA 2: CONVERSOR DE NOTAS DE SAÍDA (PDF) - CORRIGIDO
+# FERRAMENTA 2: CONVERSOR DE NOTAS DE SAÍDA (PDF)
 # ==========================================
 elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
   st.title("📤 Conversor de Notas de Saída para o Domínio Web")
@@ -272,7 +272,6 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
           data = ""
           cliente = "CLIENTE"
 
-        # Captura precisa de todos os valores monetários na linha do cabeçalho da NF (incluindo 5+ dígitos)
         vals = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}\b", header_line)
         total_str = vals[-1] if vals else "0,00"
 
@@ -286,10 +285,13 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
         else:
           commodity = "MILHO"
 
+        # Histórico atualizado: NF [nota] - [cliente] - [commodity]
+        historico_formatado = f"NF {nota} - {cliente} - {commodity}"
+
         parsed_sales.append({
             "nota": nota,
             "data": data,
-            "cliente_commodity": f"{cliente} - {commodity}",
+            "historico": historico_formatado,
             "total_str": total_str,
         })
 
@@ -336,7 +338,7 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
 
             for _, row in df_saidas.iterrows():
               data = row["data"]
-              hist = row["cliente_commodity"]
+              hist = row["historico"]
               val_clean = row["total_str"].replace(".", "").replace(",", ".")
               try:
                 val_num = float(val_clean)
@@ -347,7 +349,7 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
               val_interm_fmt = f"{val_num:.2f}".replace(".", ",")
               linhas_interm.append(f"{data};{val_interm_fmt};{hist}")
 
-              # Determina conta crédito
+              # Determina conta crédito com base no histórico
               hist_upper = hist.upper()
               if "TRIGO" in hist_upper or "TRIGUILHO" in hist_upper:
                 c_cred = conta_cred_trigo
