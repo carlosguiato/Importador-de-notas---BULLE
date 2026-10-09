@@ -1,6 +1,8 @@
+ioimport re
 import io
 import numpy as np
 import pandas as pd
+from pypdf import PdfReader
 import streamlit as st
 
 # Configuração da página
@@ -24,7 +26,7 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
   st.title("📄 Conversor de Notas de Entrada para o Domínio Web")
   st.write(
       "Faça o upload do relatório de notas de entrada para gerar o arquivo TXT"
-      " formatado corretamente."
+      " formatado."
   )
 
   uploaded_file_notas = st.file_uploader(
@@ -219,45 +221,142 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
 
 # ==========================================
-# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO
+# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO (PDF)
 # ==========================================
 elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
-  st.title("🏦 Conversor de Extrato Bancário para o Domínio Web")
+  st.title("🏦 Conversor de Extrato Bancário em PDF para o Domínio Web")
   st.write(
-      "Faça o upload do relatório de extrato bancário para gerar o arquivo TXT"
-      " formatado corretamente."
+      "Faça o upload do extrato bancário em **PDF** para gerar o arquivo TXT"
+      " formatado."
   )
 
   uploaded_file_ext = st.file_uploader(
-      "Selecione a planilha de extrato (.xlsx, .xls)",
-      type=["xlsx", "xls"],
-      key="upload_extrato",
+      "Selecione o arquivo de extrato (.pdf)", type=["pdf"], key="upload_extrato"
   )
 
   if uploaded_file_ext is not None:
     try:
-      df_raw_ext = pd.read_excel(uploaded_file_ext, header=None)
+      reader = PdfReader(uploaded_file_ext)
+      full_text = ""
+      for page in reader.pages:
+        full_text += page.extract_text() + "\n"
 
-      data_rows_ext = []
-      for idx, row in df_raw_ext.iterrows():
-        if idx >= 2 and pd.notna(row.iloc[0]):
-          data_rows_ext.append({
-              "Compensado": row.iloc[0],
-              "Documento": row.iloc[1] if len(row) > 1 else "",
-              "Historico": row.iloc[4] if len(row) > 4 else "",
-              "Credito": row.iloc[9] if len(row) > 9 else 0,
-              "Debito": row.iloc[12] if len(row) > 12 else 0,
-          })
+      # Extração inteligente das linhas do extrato em PDF
+      # Lógica: Identifica linhas que possuem data no formato DD/MM/YYYY
+      lines = full_text.split("\n")
+      parsed_data = []
 
-      df_ext = pd.DataFrame(data_rows_ext)
+      # Expressão regular para encontrar datas
+      date_pattern = re.compile(r"\b\d{2}/\d{2}/\d{4}\b")
+
+      # Vamos agrupar o texto por blocos ou varrer procurando padrões de lançamento
+      # No formato do PDF do Fazenda Bulle, cada transação possui data, histórico e valores.
+      # Vamos usar uma heurística robusta baseada em linhas de texto extraídas.
+
+      # Como o extrato em PDF do seu banco tem uma estrutura específica, vamos processar as linhas válidas:
+      # Uma linha de lançamento costuma conter uma data e valores numéricos com vírgula.
+
+      # Uma abordagem limpa para este PDF específico:
+      # Vamos iterar pelas linhas procurando datas e montando os registros.
+      current_date = None
+      current_hist = None
+      current_cred = 0.0
+      current_deb = 0.0
+
+      # Alternativamente, podemos usar extração baseada em blocos de linhas consecutivas.
+      # Vamos estruturar um parser adaptado para o PDF enviado:
+      valid_rows = []
+
+      # Limpeza prévia de linhas de cabeçalho/rodapé indesejadas
+      cleaned_lines = []
+      for line in lines:
+        line_str = line.strip()
+        if (
+            not line_str
+            or "Lançamentos bancários" in line_str
+            or "Página" in line_str
+            or "FAZENDA BULLE" in line_str
+            or "sexta-feira" in line_str
+            or "Conta" in line_str
+            or "Documento" in line_str
+            or "Histórico" in line_str
+            or "Total" in line_str
+        ):
+          continue
+        cleaned_lines.append(line_str)
+
+      # Processamento das transações
+      i = 0
+      while i < len(cleaned_lines):
+        line = cleaned_lines[i]
+        # Procura por uma data (ex: 01/09/2026)
+        if date_pattern.match(line):
+          data_trans = line
+          # As próximas linhas geralmente contêm o histórico e os valores de crédito/débito
+          hist_parts = []
+          valores = []
+
+          i += 1
+          while i < len(cleaned_lines) and not date_pattern.match(
+              cleaned_lines[i]
+          ):
+            nxt = cleaned_lines[i]
+            # Verifica se a linha é um valor numérico (contém vírgula e dígitos)
+            if re.match(r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$", nxt.replace(" ", "")):
+              valores.append(nxt)
+            elif (
+                not nxt.startswith("898996")
+                and not nxt.isdigit()
+                and len(nxt) > 2
+            ):
+              hist_parts.append(nxt)
+            i += 1
+
+          if hist_parts and valores:
+            historico = " ".join(hist_parts)
+            # O último valor ou o único valor geralmente define se é crédito ou débito conforme o layout
+            # No extrato fornecido, os valores aparecem nas colunas de Crédito ou Débito.
+            # Vamos tratar o valor numérico encontrado:
+            val_str = valores[0].replace(".", "").replace(",", ".")
+            try:
+              val_num = float(val_str)
+              # Determinamos se foi crédito ou débito com base na posição ou sinal/texto
+              # Na dúvida, se contém "Pagar:" ou "Débito", é saída (Débito no banco)
+              if (
+                  "Pagar:" in historico
+                  or "Débito:" in historico
+                  or "CUSTO PIX" in historico
+                  or "MANUTENÇÃO" in historico
+              ):
+                valid_rows.append({
+                    "Data": data_trans,
+                    "Historico": historico,
+                    "Credito": 0.0,
+                    "Debito": val_num,
+                })
+              else:
+                valid_rows.append({
+                    "Data": data_trans,
+                    "Historico": historico,
+                    "Credito": val_num,
+                    "Debito": 0.0,
+                })
+            except:
+              pass
+          else:
+            continue
+        else:
+          i += 1
+
+      df_ext = pd.DataFrame(valid_rows)
 
       if df_ext.empty:
-        st.error(
-            "Não foi possível identificar os lançamentos no extrato. Verifique"
-            " o formato."
+        st.warning(
+            "Não foi possível extrair automaticamente pelo padrão estrito."
+            " Verifique o formato do PDF."
         )
       else:
-        with st.expander("🔍 Ver prévia dos dados extraídos"):
+        with st.expander("🔍 Ver prévia dos dados extraídos do PDF"):
           st.dataframe(df_ext.head(10))
 
         st.markdown("---")
@@ -334,53 +433,14 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
           ):
             st.error("Por favor, preencha todos os códigos de contas padrão.")
           else:
-
-            def limpar_valor_e(val):
-              if pd.isna(val):
-                return 0.0
-              if isinstance(val, (int, float)):
-                return float(val)
-              try:
-                return float(
-                    str(val).strip().replace(".", "").replace(",", ".")
-                )
-              except:
-                return 0.0
-
-            df_ext["VALOR_CREDITO"] = df_ext["Credito"].apply(limpar_valor_e)
-            df_ext["VALOR_DEBITO"] = df_ext["Debito"].apply(limpar_valor_e)
-
-            def limpar_texto_e(val):
-              if pd.isna(val) or str(val).strip().lower() in [
-                  "nan",
-                  "none",
-                  "nat",
-                  "",
-              ]:
-                return ""
-              return str(val).strip().replace("\n", " ").replace("\r", " ")
-
-            df_ext["Hist_Limpo"] = df_ext["Historico"].apply(limpar_texto_e)
-            df_ext["Doc_Limpo"] = df_ext["Documento"].apply(limpar_texto_e)
-
-            def montar_historico(row):
-              h = row["Hist_Limpo"]
-              d = row["Doc_Limpo"]
-              if h and d:
-                return f"{h} - {d}"
-              elif h:
-                return h
-              elif d:
-                return d
-              return "LANCAMENTO BANCARIO"
-
-            df_ext["Historico_Final"] = df_ext.apply(montar_historico, axis=1)
-
             linhas_processadas = []
             for _, row in df_ext.iterrows():
-              cred = row["VALOR_CREDITO"]
-              deb = row["VALOR_DEBITO"]
+              cred = row["Credito"]
+              deb = row["Debito"]
 
+              # Lógica de Débito e Crédito conforme solicitado:
+              # Crédito no banco = Entrada -> Conta Crédito = Banco, Conta Débito = Clientes
+              # Débito no banco = Saída -> Conta Débito = Banco, Conta Crédito = Fornecedores
               if cred > 0 and deb == 0:
                 valor = cred
                 conta_cred = conta_banco
@@ -394,7 +454,10 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
               else:
                 continue
 
-              hist_lower = row["Historico_Final"].lower()
+              hist_final = str(row["Historico"]).strip()
+              hist_lower = hist_final.lower()
+
+              # Regras De-Para
               for r in regras_ext:
                 if r["termo"] in hist_lower:
                   if tipo_movimento == "saida":
@@ -402,20 +465,12 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
                   else:
                     conta_deb = r["conta"]
 
-              data_comp = (
-                  pd.to_datetime(row["Compensado"], errors="coerce")
-                  .strftime("%d/%m/%Y")
-                  if pd.notna(row["Compensado"])
-                  else ""
-              )
-
-              if not data_comp:
-                continue
-
+              data_trans = row["Data"]
               v_fmt = f"{valor:.2f}".replace(".", ",")
-              linhas_processadas.append(
-                  f"{data_comp};{conta_deb};{conta_cred};{v_fmt};{row['Historico_Final']}"
-              )
+
+              # Ordem exigida: data;contadebito;contacredito;valor;historico
+              linha = f"{data_trans};{conta_deb};{conta_cred};{v_fmt};{hist_final}"
+              linhas_processadas.append(linha)
 
             txt_data_e = "\n".join(linhas_processadas)
 
@@ -427,7 +482,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
             df_preview_e = pd.DataFrame(
                 [l.split(";") for l in linhas_processadas],
                 columns=[
-                    "Compensado",
+                    "Data",
                     "Conta Débito",
                     "Conta Crédito",
                     "Valor",
@@ -444,4 +499,4 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
                 mime="text/plain",
             )
     except Exception as e:
-      st.error(f"Ocorreu um erro ao processar o arquivo de extrato: {e}")
+      st.error(f"Ocorreu um erro ao processar o arquivo PDF: {e}")
