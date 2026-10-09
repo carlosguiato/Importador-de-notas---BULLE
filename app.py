@@ -221,13 +221,13 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
 
 # ==========================================
-# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO (PDF COMPLETO)
+# FERRAMENTA 2: CONVERSOR DE EXTRATO BANCÁRIO (PDF COMPLETO 119 ITENS)
 # ==========================================
 elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
   st.title("🏦 Conversor de Extrato Bancário em PDF para o Domínio Web")
   st.write(
       "Faça o upload do extrato bancário em **PDF** para gerar o arquivo TXT"
-      " formatado."
+      " formatado exatamente como no modelo."
   )
 
   uploaded_file_ext = st.file_uploader(
@@ -237,117 +237,76 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
   if uploaded_file_ext is not None:
     try:
       reader = PdfReader(uploaded_file_ext)
-      all_lines = []
+      layout_text = ""
       for page in reader.pages:
-        text = page.extract_text()
-        if text:
-          for line in text.split("\n"):
-            l_str = line.strip()
-            if l_str:
-              all_lines.append(l_str)
+        layout_text += page.extract_text(extraction_mode="layout") + "\n"
 
-      # Filtra cabeçalhos e rodapés
-      cleaned_lines = []
-      for l in all_lines:
-        if (
-            "Lançamentos bancários" in l
-            or "Página" in l
-            or "FAZENDA BULLE" in l
-            or "sexta-feira" in l
-            or "Conta" in l
-            or "Documento" in l
-            or "Histórico" in l
-            or "Total" in l
-            or "CDSFIVE" in l
-            or re.match(r"^\d/\d$", l)
-        ):
-          continue
-        cleaned_lines.append(l)
-
-      # Parser robusto baseado em blocos para capturar 100% dos lançamentos
+      lines = layout_text.split("\n")
       valid_rows = []
-      date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-      val_pattern = re.compile(r"^\d{1,3}(\.\d{3})*,\d{2}$|^\d+,\d{2}$")
 
-      i = 0
-      while i < len(cleaned_lines):
-        text_lines = []
-        while (
-            i < len(cleaned_lines)
-            and not cleaned_lines[i].startswith("898996-4")
-            and not date_pattern.match(cleaned_lines[i])
-            and not val_pattern.match(cleaned_lines[i].replace(" ", ""))
-        ):
-          text_lines.append(cleaned_lines[i])
-          i += 1
+      for line in lines:
+        if "898996-4" in line:
+          dates = re.findall(r"\d{2}/\d{2}/\d{4}", line)
+          vals = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}\b", line)
 
-        block = []
-        while (
-            i < len(cleaned_lines)
-            and not cleaned_lines[i].startswith("898996-4")
-            and not val_pattern.match(cleaned_lines[i].replace(" ", ""))
-        ):
-          block.append(cleaned_lines[i])
-          i += 1
+          if not dates or not vals:
+            continue
 
-        if i < len(cleaned_lines) and cleaned_lines[i].startswith("898996-4"):
-          i += 1
-
-        values = []
-        while i < len(cleaned_lines) and val_pattern.match(
-            cleaned_lines[i].replace(" ", "")
-        ):
-          values.append(cleaned_lines[i])
-          i += 1
-
-        if text_lines and values:
-          doc = text_lines[0]
-          hist = text_lines[1] if len(text_lines) > 1 else doc
-
-          dates_in_block = []
-          for item in text_lines + block:
-            if date_pattern.match(item):
-              dates_in_block.append(item)
-
-          data_trans = dates_in_block[0] if dates_in_block else "01/09/2026"
-
-          # Limpeza estrita do histórico (remove qualquer "Débito: ..." no final)
-          hist_clean = re.sub(
-              r"\s+Débito:\s*.*$", "", hist, flags=re.IGNORECASE
-          ).strip()
-
+          data_trans = dates[0]
+          val_str = vals[-1].replace(".", "").replace(",", ".")
           try:
-            val_num = float(values[0].replace(".", "").replace(",", "."))
-            if (
-                "Pagar:" in hist_clean
-                or "Débito:" in hist_clean
-                or "CUSTO PIX" in hist_clean
-                or "MANUTENÇÃO" in hist_clean
-                or "ARRENDAMENTO" in hist_clean
-            ):
-              valid_rows.append({
-                  "Data": data_trans,
-                  "Historico": hist_clean,
-                  "Credito": 0.0,
-                  "Debito": val_num,
-              })
-            else:
-              valid_rows.append({
-                  "Data": data_trans,
-                  "Historico": hist_clean,
-                  "Credito": val_num,
-                  "Debito": 0.0,
-              })
+            val_num = float(val_str)
           except:
-            pass
-        else:
-          i += 1
+            continue
+
+          # Limpeza do histórico na linha
+          cleaned = line.replace("898996-4", "")
+          for d in dates:
+            cleaned = cleaned.replace(d, "")
+          for v in vals:
+            cleaned = cleaned.replace(v, "")
+
+          # Remove códigos numéricos finais de tipo e débitos
+          cleaned = re.sub(r"\s+\d{2,4}\s*$", "", cleaned)
+          cleaned = re.sub(
+              r"\s+Débito:\s*\d+.*$", "", cleaned, flags=re.IGNORECASE
+          )
+          hist_clean = re.sub(r"\s+", " ", cleaned).strip(" |-/")
+
+          if not hist_clean:
+            hist_clean = "LANÇAMENTO BANCÁRIO"
+
+          # Lógica de Crédito vs Débito
+          if (
+              "Pagar:" in line
+              or "Débito:" in line
+              or "CUSTO PIX" in line
+              or "MANUTENÇÃO" in line
+              or "ARRENDAMENTO" in line
+              or "HONORARIOS" in line
+              or "FGTS" in line
+              or "MAXNET" in line
+          ):
+            valid_rows.append({
+                "Data": data_trans,
+                "Historico": hist_clean,
+                "Credito": 0.0,
+                "Debito": val_num,
+            })
+          else:
+            valid_rows.append({
+                "Data": data_trans,
+                "Historico": hist_clean,
+                "Credito": val_num,
+                "Debito": 0.0,
+            })
 
       df_ext = pd.DataFrame(valid_rows)
 
       if df_ext.empty:
         st.warning(
-            "Não foi possível extrair automaticamente. Verifique o layout do PDF."
+            "Não foi possível extrair os lançamentos. Verifique se o PDF"
+            " corresponde ao modelo esperado."
         )
       else:
         st.success(
