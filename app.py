@@ -285,7 +285,7 @@ elif ferramenta_selecionada == "📤 Conversor de Notas de Saída":
         else:
           commodity = "MILHO"
 
-        # Histórico atualizado: NF [nota] - [cliente] - [commodity]
+        # Histórico formatado explicitamente com NF [nota] - [cliente] - [commodity]
         historico_formatado = f"NF {nota} - {cliente} - {commodity}"
 
         parsed_sales.append({
