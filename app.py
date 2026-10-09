@@ -39,12 +39,12 @@ if ferramenta_selecionada == "📄 Conversor de Notas de Entrada":
 
       data_rows = []
       for idx, row in df_raw.iterrows():
-        if idx >= 7 and row[0] is not None and pd.notna(row[0]):
+        if idx >= 7 and row.iloc[0] is not None and pd.notna(row.iloc[0]):
           data_rows.append({
-              "Nota": row[0],
-              "Data": row[6],
-              "Fornecedor": row[17],
-              "Total": row[32],
+              "Nota": row.iloc[0],
+              "Data": row.iloc[6],
+              "Fornecedor": row.iloc[17],
+              "Total": row.iloc[32],
           })
 
       df_notas = pd.DataFrame(data_rows)
@@ -240,17 +240,14 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
 
       data_rows_ext = []
       for idx, row in df_raw_ext.iterrows():
-        # Verifica se a linha tem dados válidos (ignorando cabeçalhos e linhas vazias)
-        if idx >= 2 and row.shape[0] > 12:
-          comp_val = row[0]
-          if pd.notna(comp_val):
-            data_rows_ext.append({
-                "Compensado": comp_val,
-                "Documento": row[1] if row.shape[1] > 1 else "",
-                "Historico": row[4] if row.shape[1] > 4 else "",
-                "Credito": row[9] if row.shape[1] > 9 else 0,
-                "Debito": row[12] if row.shape[1] > 12 else 0,
-            })
+        if idx >= 2 and pd.notna(row.iloc[0]):
+          data_rows_ext.append({
+              "Compensado": row.iloc[0],
+              "Documento": row.iloc[1] if len(row) > 1 else "",
+              "Historico": row.iloc[4] if len(row) > 4 else "",
+              "Credito": row.iloc[9] if len(row) > 9 else 0,
+              "Debito": row.iloc[12] if len(row) > 12 else 0,
+          })
 
       df_ext = pd.DataFrame(data_rows_ext)
 
