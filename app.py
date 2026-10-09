@@ -240,14 +240,17 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
 
       data_rows_ext = []
       for idx, row in df_raw_ext.iterrows():
-        if idx >= 2 and row[0] is not None and pd.notna(row[0]):
-          data_rows_ext.append({
-              "Compensado": row[0],
-              "Documento": row[1],
-              "Historico": row[4],
-              "Credito": row[9],
-              "Debito": row[12],
-          })
+        # Verifica se a linha tem dados válidos (ignorando cabeçalhos e linhas vazias)
+        if idx >= 2 and row.shape[0] > 12:
+          comp_val = row[0]
+          if pd.notna(comp_val):
+            data_rows_ext.append({
+                "Compensado": comp_val,
+                "Documento": row[1] if row.shape[1] > 1 else "",
+                "Historico": row[4] if row.shape[1] > 4 else "",
+                "Credito": row[9] if row.shape[1] > 9 else 0,
+                "Debito": row[12] if row.shape[1] > 12 else 0,
+            })
 
       df_ext = pd.DataFrame(data_rows_ext)
 
@@ -358,7 +361,7 @@ elif ferramenta_selecionada == "🏦 Conversor de Extrato Bancário":
                   "",
               ]:
                 return ""
-              return str(val).strip().replace("\n", " ")
+              return str(val).strip().replace("\n", " ").replace("\r", " ")
 
             df_ext["Hist_Limpo"] = df_ext["Historico"].apply(limpar_texto_e)
             df_ext["Doc_Limpo"] = df_ext["Documento"].apply(limpar_texto_e)
